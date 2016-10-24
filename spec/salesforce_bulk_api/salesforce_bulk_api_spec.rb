@@ -57,8 +57,8 @@ describe SalesforceBulkApi do
         res['batches'][0]['response'][0]['success'].should eq ['true']
         res['batches'][0]['response'][0]['created'].should eq ['false']
         res = @api.query('Account', "SELECT Website, Phone From Account WHERE Id = '#{@account_id}'")
-        res['batches'][0]['response'][0]['Website'][0].should eq({"xsi:nil" => "true"})
-        res['batches'][0]['response'][0]['Phone'][0].should eq({"xsi:nil" => "true"})
+        res['batches'][0]['response'][0]['Website'][0].should eq({'xsi:nil' => 'true'})
+        res['batches'][0]['response'][0]['Phone'][0].should eq({'xsi:nil' => 'true'})
       end
     end
 
@@ -83,7 +83,7 @@ describe SalesforceBulkApi do
   describe 'update' do
     context 'when there is not an error' do
       context 'when not passed get_result' do
-        it "doesnt return the batches array" do
+        it 'does not return the batches array' do
           res = @api.update('Account', [{:Id => @account_id, :Website => 'www.test.com'}])
           res['batches'].should be_nil
         end
@@ -140,12 +140,6 @@ describe SalesforceBulkApi do
   describe 'query' do
 
     context 'when there are results' do
-      it 'returns the query results' do
-        res = @api.query('Account', "SELECT id, Name From Account WHERE Name LIKE 'Test%'")
-        res['batches'][0]['response'].length.should > 1
-        res['batches'][0]['response'][0]['Id'].should_not be_nil
-      end
-
       context 'and there are multiple batches' do
         # need dev to create > 10k records in dev organization
         it 'returns the query results in a merged hash'
@@ -173,8 +167,9 @@ describe SalesforceBulkApi do
       it 'increments operation count and http GET count' do
         @api.counters[:http_get].should eq 0
         @api.counters[:query].should eq 0
-        @api.query('Account', "SELECT Website, Phone From Account WHERE Id = '#{@account_id}'")
-        @api.counters[:http_get].should eq 1
+        @api.query('Account', "SELECT Website, Phone From Account WHERE Id = '#{@account_id}'", false)
+        @api.counters[:http_post].should eq 3
+        @api.counters[:http_get].should eq 0
         @api.counters[:query].should eq 1
       end
     end
@@ -183,8 +178,8 @@ describe SalesforceBulkApi do
       it 'increments operation count and http POST count' do
         @api.counters[:http_post].should eq 0
         @api.counters[:update].should eq 0
-        @api.update('Account', [{:Id => @account_id, :Website => 'abc123', :Phone => '5678'}], true)
-        @api.counters[:http_post].should eq 1
+        @api.update('Account', [{:Id => @account_id, :Website => 'abc123', :Phone => '5678'}], false)
+        @api.counters[:http_post].should eq 3
         @api.counters[:update].should eq 1
       end
     end
