@@ -147,8 +147,9 @@ module SalesforceBulkApi
       end
     end
 
-    def check_batch_status(batch_id)
-      path = "job/#{@job_id}/batch/#{batch_id}"
+    def check_batch_status(batch_id=nil)
+      path = "job/#{@job_id}/batch"
+      path += "/#{batch_id}" if batch_id.nil?
       headers = Hash.new
 
       response = @connection.get_request(nil, path, headers)
