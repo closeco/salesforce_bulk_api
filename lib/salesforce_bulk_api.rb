@@ -36,8 +36,8 @@ module SalesforceBulkApi
       do_operation('delete', sobject, records, nil, get_response, timeout, batch_size)
     end
 
-    def query(sobject, query, batch_size = 10000, timeout = 1500)
-      do_operation('query', sobject, query, nil, true, timeout, batch_size)
+    def query(sobject, query, get_response = true, batch_size = 10000, timeout = 1500)
+      do_operation('query', sobject, query, nil, get_response, timeout, batch_size)
     end
 
     def counters

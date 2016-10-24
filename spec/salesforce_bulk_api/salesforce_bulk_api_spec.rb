@@ -154,7 +154,7 @@ describe SalesforceBulkApi do
 
     context 'when there are no results' do
       it 'returns nil' do
-        res = @api.query('Account', "SELECT id From Account WHERE Name = 'ABC'")
+        res = @api.query('Account', "SELECT id From Account WHERE Name = 'ABC'",)
         res['batches'][0]['response'].should eq nil
       end
     end
