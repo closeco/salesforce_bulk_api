@@ -11,20 +11,20 @@ require 'timeout'
       @api_version = api_version
       @path_prefix = "/services/async/#{@api_version}/"
 
-      login()
+      login
     end
 
-    def login()
+    def login
       client_type = @client.class.to_s
       case client_type
-      when "Restforce::Data::Client"
+      when 'Restforce::Data::Client'
         @session_id = @client.options[:oauth_token]
         @server_url = @client.options[:instance_url]
       else
         @session_id = @client.oauth_token
         @server_url = @client.instance_url
       end
-      @instance = parse_instance()
+      @instance = parse_instance
       @instance_host = "#{@instance}.salesforce.com"
     end
 
@@ -70,10 +70,10 @@ require 'timeout'
       req
     end
 
-    def parse_instance()
-      @instance = @server_url.match(/https:\/\/[a-z]{2}[0-9]{1,2}/).to_s.gsub("https://","")
-      @instance = @server_url.split(".salesforce.com")[0].split("://")[1] if @instance.nil? || @instance.empty?
-      return @instance
+    def parse_instance
+      @instance = @server_url.match(/https:\/\/[a-z]{2}[0-9]{1,2}/).to_s.gsub('https://', '')
+      @instance = @server_url.split('.salesforce.com')[0].split('://')[1] if @instance.nil? || @instance.empty?
+      @instance
     end
 
     def counters
