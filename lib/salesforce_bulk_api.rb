@@ -36,8 +36,8 @@ module SalesforceBulkApi
       do_operation('delete', sobject, records, nil, get_response, timeout, batch_size)
     end
 
-    def query(sobject, query, get_response = true, timeout = 1500)
-      do_operation('query', sobject, query, nil, get_response, timeout, 0)
+    def query(sobject, query, get_response = true, timeout = 1500, options = {})
+      do_operation('query', sobject, query, nil, get_response, timeout, 0, options = options)
     end
 
     def counters
@@ -66,7 +66,9 @@ module SalesforceBulkApi
       SalesforceBulkApi::Job.new(job_id: job_id, connection: @connection)
     end
 
-    def do_operation(operation, sobject, records, external_field, get_response, timeout, batch_size, send_nulls = false, no_null_list = [])
+    def do_operation(operation, sobject, records, external_field, get_response, timeout, batch_size, send_nulls = false, no_null_list = [], options = {})
+      close_job = options.fetch(:close_job, true)
+
       count operation.to_sym
 
       job = SalesforceBulkApi::Job.new(
@@ -77,10 +79,10 @@ module SalesforceBulkApi
           connection: @connection
       )
 
-      job.create_job(batch_size, send_nulls, no_null_list)
-      @listeners[:job_created].each {|callback| callback.call(job)}
+      job.create_job(batch_size, send_nulls, no_null_list, options)
+      @listeners[:job_created].each { |callback| callback.call(job) }
       operation == 'query' ? job.add_query : job.add_batches
-      response = job.close_job
+      response = close_job ? job.close_job : {}
       response.merge!({'batches' => job.get_job_result(get_response, timeout)}) if get_response == true
       response
     end

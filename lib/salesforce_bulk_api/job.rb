@@ -16,7 +16,7 @@ module SalesforceBulkApi
       @XML_HEADER     = '<?xml version="1.0" encoding="utf-8" ?>'
     end
 
-    def create_job(batch_size, send_nulls, no_null_list)
+    def create_job(batch_size, send_nulls, no_null_list, options = {})
       @batch_size = batch_size
       @send_nulls = send_nulls
       @no_null_list = no_null_list
