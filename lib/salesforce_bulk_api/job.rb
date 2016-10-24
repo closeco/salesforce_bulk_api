@@ -3,6 +3,8 @@ module SalesforceBulkApi
   class Job
     attr_reader :job_id
 
+    XML_HEADER = '<?xml version="1.0" encoding="utf-8" ?>'
+
     class SalesforceException < StandardError; end
 
     def initialize(args)
@@ -13,7 +15,6 @@ module SalesforceBulkApi
       @records        = args[:records]
       @connection     = args[:connection]
       @batch_ids      = []
-      @XML_HEADER     = '<?xml version="1.0" encoding="utf-8" ?>'
     end
 
     def create_job(batch_size, send_nulls, no_null_list, options = {})
@@ -25,17 +26,17 @@ module SalesforceBulkApi
       # Looks like pk chunking doesn't support XML or JSON at the moment
       content_type = @pk_chunking ? 'CSV' : 'XML'
 
-      xml = "#{@XML_HEADER}<jobInfo xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\">"
+      xml = "#{XML_HEADER}<jobInfo xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\">"
       xml += "<operation>#{@operation}</operation>"
       xml += "<object>#{@sobject}</object>"
       # This only happens on upsert
-      if !@external_field.nil?
+      unless @external_field.nil?
         xml += "<externalIdFieldName>#{@external_field}</externalIdFieldName>"
       end
       xml += "<contentType>#{content_type}</contentType>"
-      xml += "</jobInfo>"
+      xml += '</jobInfo>'
 
-      path = "job"
+      path = 'job'
       headers = Hash['Content-Type' => 'application/xml; charset=utf-8']
 
       if @pk_chunking
@@ -51,10 +52,10 @@ module SalesforceBulkApi
       @job_id = response_parsed['id'][0]
     end
 
-    def close_job()
-      xml = "#{@XML_HEADER}<jobInfo xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\">"
-      xml += "<state>Closed</state>"
-      xml += "</jobInfo>"
+    def close_job
+      xml = "#{XML_HEADER}<jobInfo xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\">"
+      xml += '<state>Closed</state>'
+      xml += '</jobInfo>'
 
       path = "job/#{@job_id}"
       headers = Hash['Content-Type' => 'application/xml; charset=utf-8']
@@ -92,13 +93,13 @@ module SalesforceBulkApi
     end
 
     def add_batch(keys, batch)
-      xml = "#{@XML_HEADER}<sObjects xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
+      xml = "#{XML_HEADER}<sObjects xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
       batch.each do |r|
         xml += create_sobject(keys, r)
       end
       xml += '</sObjects>'
       path = "job/#{@job_id}/batch/"
-      headers = Hash["Content-Type" => "application/xml; charset=UTF-8"]
+      headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
       response = @connection.post_xml(nil, path, xml, headers)
       response_parsed = XmlSimple.xml_in(response)
       response_parsed['id'][0] if response_parsed['id']
@@ -137,8 +138,7 @@ module SalesforceBulkApi
           sobject_xml += "<#{k} xsi:nil=\"true\"/>"
         end
       end
-      sobject_xml += '</sObject>'
-      sobject_xml
+      sobject_xml + '</sObject>'
     end
 
     def check_job_status
@@ -147,8 +147,7 @@ module SalesforceBulkApi
       response = @connection.get_request(nil, path, headers)
 
       begin
-        response_parsed = XmlSimple.xml_in(response) if response
-        response_parsed
+        XmlSimple.xml_in(response) if response
       rescue StandardError => e
         puts "Error parsing XML response for #{@job_id}"
         puts e
@@ -164,8 +163,7 @@ module SalesforceBulkApi
       response = @connection.get_request(nil, path, headers)
 
       begin
-        response_parsed = XmlSimple.xml_in(response) if response
-        response_parsed
+        XmlSimple.xml_in(response) if response
       rescue StandardError => e
         puts "Error parsing XML response for #{@job_id}, batch #{batch_id}"
         puts e
@@ -184,7 +182,7 @@ module SalesforceBulkApi
 
               batches_ready = @batch_ids.all? do |batch_id|
                 batch_state = batch_statuses[batch_id] = self.check_batch_status(batch_id)
-                batch_state['state'][0] != "Queued" && batch_state['state'][0] != "InProgress"
+                batch_state['state'][0] != 'Queued' && batch_state['state'][0] != 'InProgress'
               end
 
               if batches_ready
@@ -200,7 +198,7 @@ module SalesforceBulkApi
           end
         end
       rescue SalesforceBulkApi::JobTimeout => e
-        puts 'Timeout waiting for Salesforce to process job batches #{@batch_ids} of job #{@job_id}.'
+        puts "Timeout waiting for Salesforce to process job batches #{@batch_ids} of job #{@job_id}."
         puts e
         raise
       end
@@ -215,20 +213,20 @@ module SalesforceBulkApi
 
     def get_batch_result(batch_id)
       path = "job/#{@job_id}/batch/#{batch_id}/result"
-      headers = Hash["Content-Type" => "application/xml; charset=UTF-8"]
+      headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
 
       response = @connection.get_request(nil, path, headers)
       response_parsed = XmlSimple.xml_in(response)
-      results = response_parsed['result'] unless @operation == 'query'
 
-      if(@operation == 'query') # The query op requires us to do another request to get the results
-        result_id = response_parsed["result"][0]
+      if @operation == 'query' # The query op requires us to do another request to get the results
+        result_id = response_parsed['result'][0]
         path = "job/#{@job_id}/batch/#{batch_id}/result/#{result_id}"
-        headers = Hash.new
-        headers = Hash["Content-Type" => "application/xml; charset=UTF-8"]
+        headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
         response = @connection.get_request(nil, path, headers)
         response_parsed = XmlSimple.xml_in(response)
         results = response_parsed['records']
+      else
+        results = response_parsed['result']
       end
       results
     end
