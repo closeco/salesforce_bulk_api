@@ -68,6 +68,7 @@ module SalesforceBulkApi
 
     def do_operation(operation, sobject, records, external_field, get_response, timeout, batch_size, send_nulls = false, no_null_list = [], options = {})
       close_job = options.fetch(:close_job, true)
+      pk_chunking = options.fetch(:pk_chunking, false)
 
       count operation.to_sym
 
@@ -82,7 +83,7 @@ module SalesforceBulkApi
       job.create_job(batch_size, send_nulls, no_null_list, options)
       @listeners[:job_created].each { |callback| callback.call(job) }
       operation == 'query' ? job.add_query : job.add_batches
-      response = close_job ? job.close_job : {}
+      response = (close_job && !pk_chunking) ? job.close_job : {}
       response.merge!({'batches' => job.get_job_result(get_response, timeout)}) if get_response == true
       response
     end

@@ -20,6 +20,10 @@ module SalesforceBulkApi
       @batch_size = batch_size
       @send_nulls = send_nulls
       @no_null_list = no_null_list
+      @pk_chunking = options.fetch(:pk_chunking, false)
+
+      # Looks like pk chunking doesn't support XML or JSON at the moment
+      content_type = @pk_chunking ? 'CSV' : 'XML'
 
       xml = "#{@XML_HEADER}<jobInfo xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\">"
       xml += "<operation>#{@operation}</operation>"
@@ -28,11 +32,15 @@ module SalesforceBulkApi
       if !@external_field.nil?
         xml += "<externalIdFieldName>#{@external_field}</externalIdFieldName>"
       end
-      xml += "<contentType>XML</contentType>"
+      xml += "<contentType>#{content_type}</contentType>"
       xml += "</jobInfo>"
 
       path = "job"
       headers = Hash['Content-Type' => 'application/xml; charset=utf-8']
+
+      if @pk_chunking
+        headers['Sforce-Enable-PKChunking'] = 'true'
+      end
 
       response = @connection.post_xml(nil, path, xml, headers)
       response_parsed = XmlSimple.xml_in(response)
@@ -57,7 +65,8 @@ module SalesforceBulkApi
 
     def add_query
       path = "job/#{@job_id}/batch/"
-      headers = Hash["Content-Type" => "application/xml; charset=UTF-8"]
+      content_type = @pk_chunking ? 'text/csv' : 'application/xml'
+      headers = Hash['Content-Type' => "#{content_type}; charset=UTF-8"]
 
       response = @connection.post_xml(nil, path, @records, headers)
       response_parsed = XmlSimple.xml_in(response)
