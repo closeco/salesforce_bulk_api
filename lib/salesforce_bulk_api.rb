@@ -79,7 +79,7 @@ module SalesforceBulkApi
 
       job.create_job(batch_size, send_nulls, no_null_list)
       @listeners[:job_created].each {|callback| callback.call(job)}
-      operation == "query" ? job.add_query() : job.add_batches()
+      operation == 'query' ? job.add_query : job.add_batches
       response = job.close_job
       response.merge!({'batches' => job.get_job_result(get_response, timeout)}) if get_response == true
       response
