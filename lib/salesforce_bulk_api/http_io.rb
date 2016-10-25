@@ -67,4 +67,3 @@ module SalesforceBulkApi
     end
   end
 end
-

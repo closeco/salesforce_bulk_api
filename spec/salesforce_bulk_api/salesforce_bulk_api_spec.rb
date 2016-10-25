@@ -167,7 +167,7 @@ describe SalesforceBulkApi do
       it 'increments operation count and http GET count' do
         @api.counters[:http_get].should eq 0
         @api.counters[:query].should eq 0
-        @api.query('Account', "SELECT Website, Phone From Account WHERE Id = '#{@account_id}'", false)
+        @api.query('Account', "SELECT Website, Phone From Account WHERE Id = '#{@account_id}'", get_response: false)
         @api.counters[:http_post].should eq 3
         @api.counters[:http_get].should eq 0
         @api.counters[:query].should eq 1

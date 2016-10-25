@@ -1,8 +1,9 @@
 module SalesforceBulkApi
-  require 'http_io'
+  require 'salesforce_bulk_api/http_io'
 
   class Job
     attr_reader :job_id
+    attr_reader :batch_ids
 
     XML_HEADER = '<?xml version="1.0" encoding="utf-8" ?>'
 
