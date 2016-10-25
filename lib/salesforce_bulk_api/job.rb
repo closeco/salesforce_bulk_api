@@ -1,4 +1,5 @@
 module SalesforceBulkApi
+  require 'http_io'
 
   class Job
     attr_reader :job_id
@@ -229,6 +230,31 @@ module SalesforceBulkApi
         results = response_parsed['result']
       end
       results
+    end
+
+    def results(batch_id)
+      path = "job/#{@job_id}/batch/#{batch_id}/result"
+      headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
+
+      response = @connection.get_request(nil, path, headers)
+      response_parsed = XmlSimple.xml_in(response)
+
+      Enumerator.new do |yielder|
+
+        (response_parsed['result'] || []).each do |result_id|
+          path = "job/#{@job_id}/batch/#{batch_id}/result/#{result_id}"
+          uri = "https://#{@connection.instance_host}#{@connection.path_prefix}#{path}"
+
+          headers['Content-Type'] = 'text/csv'
+          headers['X-SFDC-Session'] = @connection.session_id
+
+          SalesforceBulkApi::HttpIo.open(uri, {headers: headers}) do |io|
+            CSV.new(io, encoding: 'utf-8', row_sep: "\n", col_sep: ',', headers: :first_row).each do |csv|
+              yielder << csv.to_hash
+            end
+          end
+        end
+      end
     end
 
   end

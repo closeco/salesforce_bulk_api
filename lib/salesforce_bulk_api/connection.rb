@@ -1,8 +1,10 @@
 module SalesforceBulkApi
-require 'timeout'
+  require 'timeout'
 
   class Connection
     include Concerns::Throttling
+
+    attr_reader :instance_host, :path_prefix, :session_id
 
     LOGIN_HOST = 'login.salesforce.com'
 
@@ -55,7 +57,7 @@ require 'timeout'
       host = host || @instance_host
       path = "#{@path_prefix}#{path}"
       if host != LOGIN_HOST # Not login, need to add session id to header
-        headers['X-SFDC-Session'] = @session_id;
+        headers['X-SFDC-Session'] = @session_id
       end
 
       count :get

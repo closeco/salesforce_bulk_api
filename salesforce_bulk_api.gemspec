@@ -15,6 +15,7 @@ Gem::Specification.new do |s|
   s.rubyforge_project = 'salesforce_bulk_api'
 
   s.add_dependency('json', ['>= 0'])
+  s.add_dependency('http', ['>= 2.0.3'])
   s.add_dependency('xml-simple', ['>= 0'])
 
   s.add_development_dependency 'rspec'
