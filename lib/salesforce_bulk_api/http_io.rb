@@ -14,7 +14,7 @@ module SalesforceBulkApi
           @io.close
         end
       end
-      @io.do_open(uri)
+      @io.do_open(uri, options)
       @io
     end
 
