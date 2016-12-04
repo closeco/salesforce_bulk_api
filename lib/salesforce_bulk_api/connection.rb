@@ -30,7 +30,7 @@ module SalesforceBulkApi
       @instance_host = "#{@instance}.salesforce.com"
     end
 
-    def post_xml(host, path, xml, headers)
+    def post_request(host, path, data, headers)
       host = host || @instance_host
       if host != LOGIN_HOST # Not login, need to add session id to header
         headers['X-SFDC-Session'] = @session_id
@@ -40,7 +40,7 @@ module SalesforceBulkApi
       begin
         count :post
         throttle(http_method: :post, path: path)
-        https(host).post(path, xml, headers).body
+        https(host).post(path, data, headers).body
       rescue
         i += 1
         if i < 3

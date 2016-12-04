@@ -20,12 +20,12 @@ module SalesforceBulkApi
       @listeners = { job_created: [] }
     end
 
-    def upsert(sobject, records, external_field, get_response = false, send_nulls = false, no_null_list = [], batch_size = 10000, timeout = 1500)
-      do_operation('upsert', sobject, records, external_field, get_response, timeout, batch_size, send_nulls, no_null_list)
+    def upsert(sobject, records, external_field, get_response = false, batch_size = 10000, timeout = 1500)
+      do_operation('upsert', sobject, records, external_field, get_response, timeout, batch_size)
     end
 
-    def update(sobject, records, get_response = false, send_nulls = false, no_null_list = [], batch_size = 10000, timeout = 1500)
-      do_operation('update', sobject, records, nil, get_response, timeout, batch_size, send_nulls, no_null_list)
+    def update(sobject, records, get_response = false, batch_size = 10000, timeout = 1500)
+      do_operation('update', sobject, records, nil, get_response, timeout, batch_size)
     end
 
     def create(sobject, records, get_response = false, send_nulls = false, batch_size = 10000, timeout = 1500)
@@ -39,7 +39,7 @@ module SalesforceBulkApi
     def query(sobject, query, options = {})
       get_response = options.fetch(:get_response, true)
       timeout = options.fetch(:timeout, 1500)
-      do_operation('query', sobject, query, nil, get_response, timeout, 0, send_nulls = false, no_null_list = [], options = options)
+      do_operation('query', sobject, query, nil, get_response, timeout, 0, options = options)
     end
 
     def counters
@@ -68,7 +68,7 @@ module SalesforceBulkApi
       SalesforceBulkApi::Job.new(job_id: job_id, connection: @connection)
     end
 
-    def do_operation(operation, sobject, records, external_field, get_response, timeout, batch_size, send_nulls = false, no_null_list = [], options = {})
+    def do_operation(operation, sobject, records, external_field, get_response, timeout, batch_size, options = {})
       close_job = options.fetch(:close_job, true)
       pk_chunking = options.fetch(:pk_chunking, false)
 
@@ -82,15 +82,18 @@ module SalesforceBulkApi
           connection: @connection
       )
 
-      job.create_job(batch_size, send_nulls, no_null_list, options)
+      job.create_job(batch_size, options)
       @listeners[:job_created].each { |callback| callback.call(job) }
       operation == 'query' ? job.add_query : job.add_batches
       response = (close_job && !pk_chunking) ? job.close_job : {}
-      response.merge!({'batches' => job.get_job_result(get_response, timeout)}) if get_response == true
+      response.merge!({
+        'batches' => job.get_job_result(get_response, timeout)
+      }) if get_response == true
       response
     end
 
     private
+
     def get_counters
       @counters ||= Hash.new(0)
     end

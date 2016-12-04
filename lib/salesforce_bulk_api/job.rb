@@ -7,8 +7,6 @@ module SalesforceBulkApi
 
     XML_HEADER = '<?xml version="1.0" encoding="utf-8" ?>'
 
-    class SalesforceException < StandardError; end
-
     def initialize(args)
       @job_id         = args[:job_id]
       @operation      = args[:operation]
@@ -19,14 +17,9 @@ module SalesforceBulkApi
       @batch_ids      = []
     end
 
-    def create_job(batch_size, send_nulls, no_null_list, options = {})
+    def create_job(batch_size, options = {})
       @batch_size = batch_size
-      @send_nulls = send_nulls
-      @no_null_list = no_null_list
       @pk_chunking = options.fetch(:pk_chunking, false)
-
-      # Looks like pk chunking doesn't support XML or JSON at the moment
-      content_type = @pk_chunking ? 'CSV' : 'XML'
 
       xml = "#{XML_HEADER}<jobInfo xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\">"
       xml += "<operation>#{@operation}</operation>"
@@ -35,9 +28,8 @@ module SalesforceBulkApi
       unless @external_field.nil?
         xml += "<externalIdFieldName>#{@external_field}</externalIdFieldName>"
       end
-      xml += "<contentType>#{content_type}</contentType>"
+      xml += '<contentType>CSV</contentType>'
       xml += '</jobInfo>'
-
       path = 'job'
       headers = Hash['Content-Type' => 'application/xml; charset=utf-8']
 
@@ -45,11 +37,13 @@ module SalesforceBulkApi
         headers['Sforce-Enable-PKChunking'] = 'true'
       end
 
-      response = @connection.post_xml(nil, path, xml, headers)
+      response = @connection.post_request(nil, path, xml, headers)
       response_parsed = XmlSimple.xml_in(response)
 
-      # response may contain an exception, so raise it
-      raise SalesforceException.new("#{response_parsed['exceptionMessage'][0]} (#{response_parsed['exceptionCode'][0]})") if response_parsed['exceptionCode']
+      raise SalesforceBulkApi::SalesforceException.new(
+        "#{response_parsed['exceptionMessage'][0]} (#{response_parsed['exceptionCode'][0]})"
+      ) if response_parsed['exceptionCode']
+
 
       @job_id = response_parsed['id'][0]
     end
@@ -62,16 +56,16 @@ module SalesforceBulkApi
       path = "job/#{@job_id}"
       headers = Hash['Content-Type' => 'application/xml; charset=utf-8']
 
-      response = @connection.post_xml(nil, path, xml, headers)
+      response = @connection.post_request(nil, path, xml, headers)
       XmlSimple.xml_in(response)
     end
 
     def add_query
       path = "job/#{@job_id}/batch/"
-      content_type = @pk_chunking ? 'text/csv' : 'application/xml'
+      content_type = 'text/csv'
       headers = Hash['Content-Type' => "#{content_type}; charset=UTF-8"]
 
-      response = @connection.post_xml(nil, path, @records, headers)
+      response = @connection.post_request(nil, path, @records, headers)
       response_parsed = XmlSimple.xml_in(response)
 
       @batch_ids << response_parsed['id'][0]
@@ -79,7 +73,9 @@ module SalesforceBulkApi
 
     def add_batches
       raise 'Records must be an array of hashes.' unless @records.is_a? Array
-      keys = @records.reduce({}) {|h, pairs| pairs.each {|k, v| (h[k] ||= []) << v}; h}.keys
+      keys = @records
+               .inject(Set.new) { |set, record| set.merge(record.keys); set }
+               .to_a
 
       @records_dup = @records.clone
 
@@ -95,89 +91,63 @@ module SalesforceBulkApi
     end
 
     def add_batch(keys, batch)
-      first = nil
-      xml = "#{XML_HEADER}<sObjects xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
-      batch.each do |r|
-        sobject = create_sobject(keys, r)
-        xml += sobject
-        first ||= sobject
+      text = CSV.generate({
+        write_headers: true,
+        encoding: 'utf-8',
+        row_sep: "\n",
+        col_sep: ',',
+        headers: keys
+      }) do |csv|
+        batch.each { |object| csv << create_sobject(keys, object) }
       end
-      xml += '</sObjects>'
-      path = "job/#{@job_id}/batch/"
-      headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
-      response = @connection.post_xml(nil, path, xml, headers)
-      response_parsed = XmlSimple.xml_in(response)
-      if response_parsed['id']
-        response_parsed['id'][0]
-      else
-        raise "Failed to create batch, Salesforce response: #{response.to_s}, job id #{@job_id}, batch size: #{batch.size}, first object looks like: #{first}"
-      end
-    end
 
-    def build_sobject(data)
-      xml = '<sObject>'
-      data.keys.each do |k|
-        if k.is_a?(Hash)
-          xml += build_sobject(k)
-        elsif data[k] != :type
-          xml += "<#{k}>#{data[k]}</#{k}>"
-        end
-      end
-      xml += '</sObject>'
+      path = "job/#{@job_id}/batch/"
+      headers = Hash['Content-Type' => 'text/csv; charset=UTF-8']
+      response = @connection.post_request(nil, path, text, headers)
+      response_parsed = XmlSimple.xml_in(response) || {}
+
+      raise SalesforceBulkApi::ProcessingException.new(
+        "Failed to create a new batch, Salesforce response: #{response.to_s}," +
+          "job id #{@job_id}, batch size: #{batch.size} objects, #{text.length} symbols"
+      ) if (response_parsed['id'] || []).empty?
+
+      response_parsed['id'][0]
     end
 
     def create_sobject(keys, r)
-      sobject_xml = '<sObject>'
+      result = []
       keys.each do |k|
-        if r[k].is_a?(Hash)
-          sobject_xml += "<#{k}>"
-          sobject_xml += build_sobject(r[k])
-          sobject_xml += "</#{k}>"
-        elsif !r[k].to_s.empty?
-          sobject_xml += "<#{k}>"
-          if r[k].respond_to?(:encode)
-            sobject_xml += r[k].encode(:xml => :text)
-          elsif r[k].respond_to?(:iso8601) # timestamps
-            sobject_xml += r[k].iso8601.to_s
+        value = r[k]
+        if value.to_s.empty?
+          raise SalesforceBulkApi::ProcessingException.new(
+            "Value is empty or not specified #{k}, #{r.to_s}, use space instead",
+          )
+        elsif value.is_a?(Hash)
+          raise SalesforceBulkApi::ProcessingException.new("Unsupported field type, #{k}, #{r.to_s}")
+        else
+          if value.respond_to?(:iso8601) # timestamps
+            result << value.iso8601.to_s
           else
-            sobject_xml += r[k].to_s
+            result << value.to_s
           end
-          sobject_xml += "</#{k}>"
-        elsif @send_nulls && !@no_null_list.include?(k)
-          sobject_xml += "<#{k} xsi:nil=\"true\"/>"
         end
       end
-      sobject_xml + '</sObject>'
+      result
     end
 
     def check_job_status
       path = "job/#{@job_id}"
       headers = Hash.new
       response = @connection.get_request(nil, path, headers)
-
-      begin
-        XmlSimple.xml_in(response) if response
-      rescue StandardError => e
-        puts "Error parsing XML response for #{@job_id}"
-        puts e
-        puts e.backtrace
-      end
+      XmlSimple.xml_in(response) if response
     end
 
     def check_batch_status(batch_id=nil)
       path = "job/#{@job_id}/batch"
       path += "/#{batch_id}" unless batch_id.nil?
       headers = Hash.new
-
       response = @connection.get_request(nil, path, headers)
-
-      begin
-        XmlSimple.xml_in(response) if response
-      rescue StandardError => e
-        puts "Error parsing XML response for #{@job_id}, batch #{batch_id}"
-        puts e
-        puts e.backtrace
-      end
+      XmlSimple.xml_in(response) if response
     end
 
     def get_job_result(return_result, timeout)
@@ -206,38 +176,36 @@ module SalesforceBulkApi
             end
           end
         end
-      rescue SalesforceBulkApi::JobTimeout => e
-        puts "Timeout waiting for Salesforce to process job batches #{@batch_ids} of job #{@job_id}."
-        puts e
-        raise
+      rescue SalesforceBulkApi::JobTimeout
+        raise "Timeout waiting for Salesforce to process job batches #{@batch_ids} of job #{@job_id}."
       end
 
       state.each_with_index do |batch_state, i|
         if batch_state['state'][0] == 'Completed' && return_result == true
-          state[i].merge!({'response' => self.get_batch_result(batch_state['id'][0])})
+          state[i].merge!({
+            'response' => self.get_batch_result(batch_state['id'][0])
+          })
         end
       end
       state
     end
 
     def get_batch_result(batch_id)
-      path = "job/#{@job_id}/batch/#{batch_id}/result"
-      headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
-
-      response = @connection.get_request(nil, path, headers)
-      response_parsed = XmlSimple.xml_in(response)
-
-      if @operation == 'query' # The query op requires us to do another request to get the results
-        result_id = response_parsed['result'][0]
-        path = "job/#{@job_id}/batch/#{batch_id}/result/#{result_id}"
-        headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
-        response = @connection.get_request(nil, path, headers)
-        response_parsed = XmlSimple.xml_in(response)
-        results = response_parsed['records']
+      if @operation == 'query'
+        self.results(batch_id).to_a
       else
-        results = response_parsed['result']
+        path = "job/#{@job_id}/batch/#{batch_id}/result"
+        headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
+        response = @connection.get_request(nil, path, headers) || ''
+        CSV.parse(
+          response,
+          encoding: 'utf-8',
+          row_sep: "\n",
+          col_sep: ',',
+          headers: :first_row,
+          header_converters: lambda { |h| h.downcase }
+        ).map(&:to_hash)
       end
-      results
     end
 
     def results(batch_id)
@@ -264,9 +232,15 @@ module SalesforceBulkApi
         end
       end
     end
-
   end
 
   class JobTimeout < StandardError
   end
+
+  class SalesforceException < StandardError
+  end
+
+  class ProcessingException < StandardError
+  end
+
 end
