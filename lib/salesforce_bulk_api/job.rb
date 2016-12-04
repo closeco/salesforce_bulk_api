@@ -111,6 +111,7 @@ module SalesforceBulkApi
         response_parsed['id'][0]
       else
         raise "Failed to create batch, Salesforce response: #{response.to_s}, job id #{@job_id}, batch size: #{batch.size}, first object looks like: #{first}"
+      end
     end
 
     def build_sobject(data)
