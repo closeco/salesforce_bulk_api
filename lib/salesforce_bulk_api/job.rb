@@ -95,16 +95,22 @@ module SalesforceBulkApi
     end
 
     def add_batch(keys, batch)
+      first = nil
       xml = "#{XML_HEADER}<sObjects xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
       batch.each do |r|
-        xml += create_sobject(keys, r)
+        sobject = create_sobject(keys, r)
+        xml += sobject
+        first ||= sobject
       end
       xml += '</sObjects>'
       path = "job/#{@job_id}/batch/"
       headers = Hash['Content-Type' => 'application/xml; charset=UTF-8']
       response = @connection.post_xml(nil, path, xml, headers)
       response_parsed = XmlSimple.xml_in(response)
-      response_parsed['id'][0] if response_parsed['id']
+      if response_parsed['id']
+        response_parsed['id'][0]
+      else
+        raise "Failed to create batch, Salesforce response: #{response.to_s}, job id #{@job_id}, batch size: #{batch.size}, first object looks like: #{first}"
     end
 
     def build_sobject(data)
