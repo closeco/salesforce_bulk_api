@@ -6,28 +6,33 @@ module SalesforceBulkApi
     attr_reader :batch_ids
 
     XML_HEADER = '<?xml version="1.0" encoding="utf-8" ?>'
+    MAX_BATCH_SIZE = 10_000
 
     def initialize(args)
       @job_id         = args[:job_id]
       @operation      = args[:operation]
       @sobject        = args[:sobject]
       @external_field = args[:external_field]
-      @records        = args[:records]
       @connection     = args[:connection]
       @batch_ids      = []
     end
 
-    def create_job(batch_size, options = {})
-      @batch_size = batch_size
+    def create_job(options = {})
       @pk_chunking = options.fetch(:pk_chunking, false)
+      @concurrency_mode = options.fetch(:concurrency_mode, 'Parallel')
+
+      if @concurrency_mode != 'Parallel' && @concurrency_mode != 'Serial'
+        raise "Unexpected concurrency mode #{@concurrency_mode}, expected 'Parallel', 'Serial'"
+      end
 
       xml = "#{XML_HEADER}<jobInfo xmlns=\"http://www.force.com/2009/06/asyncapi/dataload\">"
       xml += "<operation>#{@operation}</operation>"
       xml += "<object>#{@sobject}</object>"
       # This only happens on upsert
-      unless @external_field.nil?
+      if !@external_field.nil? && @operation == 'upsert'
         xml += "<externalIdFieldName>#{@external_field}</externalIdFieldName>"
       end
+      xml += "<concurrencyMode>#{@concurrency_mode}</concurrencyMode>"
       xml += '<contentType>CSV</contentType>'
       xml += '</jobInfo>'
       path = 'job'
@@ -60,79 +65,39 @@ module SalesforceBulkApi
       XmlSimple.xml_in(response)
     end
 
-    def add_query
+    def add_query(query)
       path = "job/#{@job_id}/batch/"
       content_type = 'text/csv'
       headers = Hash['Content-Type' => "#{content_type}; charset=UTF-8"]
 
-      response = @connection.post_request(nil, path, @records, headers)
+      response = @connection.post_request(nil, path, query, headers)
       response_parsed = XmlSimple.xml_in(response)
 
       @batch_ids << response_parsed['id'][0]
     end
 
-    def add_batches
-      raise 'Records must be an array of hashes.' unless @records.is_a? Array
-      keys = @records
-               .inject(Set.new) { |set, record| set.merge(record.keys); set }
-               .to_a
+    def add_batches(records, batch_size = MAX_BATCH_SIZE)
+      raise 'Records must be an array of hashes.' unless records.is_a? Array
+      unless 0 < batch_size && batch_size <= MAX_BATCH_SIZE
+        raise "Invalid batch size #{batch_size}, expected 1 .. #{MAX_BATCH_SIZE}"
+      end
 
-      @records_dup = @records.clone
+      keys = records
+        .inject(Set.new) { |set, record| set.merge(record.keys); set }
+        .to_a
+
+      records_dup = records.clone
 
       super_records = []
-      (@records_dup.size / @batch_size).to_i.times do
-        super_records << @records_dup.pop(@batch_size)
+      (records_dup.size / batch_size).to_i.times do
+        super_records << records_dup.pop(batch_size)
       end
-      super_records << @records_dup unless @records_dup.empty?
+      super_records << records_dup unless records_dup.empty?
 
       super_records.each do |batch|
         @batch_ids << add_batch(keys, batch)
       end
-    end
-
-    def add_batch(keys, batch)
-      text = CSV.generate({
-        write_headers: true,
-        encoding: 'utf-8',
-        row_sep: "\n",
-        col_sep: ',',
-        headers: keys
-      }) do |csv|
-        batch.each { |object| csv << create_sobject(keys, object) }
-      end
-
-      path = "job/#{@job_id}/batch/"
-      headers = Hash['Content-Type' => 'text/csv; charset=UTF-8']
-      response = @connection.post_request(nil, path, text, headers)
-      response_parsed = XmlSimple.xml_in(response) || {}
-
-      raise SalesforceBulkApi::ProcessingException.new(
-        "Failed to create a new batch, Salesforce response: #{response.to_s}," +
-          "job id #{@job_id}, batch size: #{batch.size} objects, #{text.length} symbols"
-      ) if (response_parsed['id'] || []).empty?
-
-      response_parsed['id'][0]
-    end
-
-    def create_sobject(keys, r)
-      result = []
-      keys.each do |k|
-        value = r[k]
-        if value.to_s.empty?
-          raise SalesforceBulkApi::ProcessingException.new(
-            "Value is empty or not specified #{k}, #{r.to_s}, use space instead",
-          )
-        elsif value.is_a?(Hash)
-          raise SalesforceBulkApi::ProcessingException.new("Unsupported field type, #{k}, #{r.to_s}")
-        else
-          if value.respond_to?(:iso8601) # timestamps
-            result << value.iso8601.to_s
-          else
-            result << value.to_s
-          end
-        end
-      end
-      result
+      @batch_ids
     end
 
     def check_job_status
@@ -231,6 +196,53 @@ module SalesforceBulkApi
           end
         end
       end
+    end
+
+    private
+
+    def add_batch(keys, batch)
+      text = CSV.generate({
+        write_headers: true,
+        encoding: 'utf-8',
+        row_sep: "\n",
+        col_sep: ',',
+        headers: keys
+      }) do |csv|
+        batch.each { |object| csv << create_sobject(keys, object) }
+      end
+
+      path = "job/#{@job_id}/batch/"
+      headers = Hash['Content-Type' => 'text/csv; charset=UTF-8']
+      response = @connection.post_request(nil, path, text, headers)
+      response_parsed = XmlSimple.xml_in(response) || {}
+
+      raise SalesforceBulkApi::ProcessingException.new(
+        "Failed to create a new batch, Salesforce response: #{response.to_s}," +
+          "job id #{@job_id}, batch size: #{batch.size} objects, #{text.length} symbols"
+      ) if (response_parsed['id'] || []).empty?
+
+      response_parsed['id'][0]
+    end
+
+    def create_sobject(keys, r)
+      result = []
+      keys.each do |k|
+        value = r[k]
+        if value.to_s.empty?
+          raise SalesforceBulkApi::ProcessingException.new(
+            "Value is empty or not specified #{k}, #{r.to_s}, use space instead",
+          )
+        elsif value.is_a?(Hash)
+          raise SalesforceBulkApi::ProcessingException.new("Unsupported field type, #{k}, #{r.to_s}")
+        else
+          if value.respond_to?(:iso8601) # timestamps
+            result << value.iso8601.to_s
+          else
+            result << value.to_s
+          end
+        end
+      end
+      result
     end
   end
 

@@ -20,26 +20,27 @@ module SalesforceBulkApi
       @listeners = { job_created: [] }
     end
 
-    def upsert(sobject, records, external_field, get_response = false, batch_size = 10000, timeout = 1500)
-      do_operation('upsert', sobject, records, external_field, get_response, timeout, batch_size)
+    def upsert(sobject, records, options = {})
+      do_operation('upsert', sobject, records, options = options)
     end
 
-    def update(sobject, records, get_response = false, batch_size = 10000, timeout = 1500)
-      do_operation('update', sobject, records, nil, get_response, timeout, batch_size)
+    def update(sobject, records, options = {})
+      do_operation('update', sobject, records, options = options)
     end
 
-    def create(sobject, records, get_response = false, send_nulls = false, batch_size = 10000, timeout = 1500)
-      do_operation('insert', sobject, records, nil, get_response, timeout, batch_size, send_nulls)
+    def create(sobject, records, options = {})
+      do_operation('insert', sobject, records, options = options)
     end
 
-    def delete(sobject, records, get_response = false, batch_size = 10000, timeout = 1500)
-      do_operation('delete', sobject, records, nil, get_response, timeout, batch_size)
+    def delete(sobject, records, options = {})
+      do_operation('delete', sobject, records, options = options)
     end
 
     def query(sobject, query, options = {})
       get_response = options.fetch(:get_response, true)
-      timeout = options.fetch(:timeout, 1500)
-      do_operation('query', sobject, query, nil, get_response, timeout, 0, options = options)
+      args = options.dup
+      args[:get_response] = get_response
+      do_operation('query', sobject, query, options = args)
     end
 
     def counters
@@ -54,7 +55,6 @@ module SalesforceBulkApi
       }
     end
 
-
     ##
     # Allows you to attach a listener that accepts the created job (which has a useful #job_id field).  This is useful
     # for recording a job ID persistently before you begin batch work (i.e. start modifying the salesforce database),
@@ -68,23 +68,25 @@ module SalesforceBulkApi
       SalesforceBulkApi::Job.new(job_id: job_id, connection: @connection)
     end
 
-    def do_operation(operation, sobject, records, external_field, get_response, timeout, batch_size, options = {})
+    def do_operation(operation, sobject, workload, options = {})
       close_job = options.fetch(:close_job, true)
       pk_chunking = options.fetch(:pk_chunking, false)
+      get_response = options.fetch(:get_response, false)
+      timeout = options.fetch(:timeout, 1500)
+      batch_size = options.fetch(:batch_size, SalesforceBulkApi::Job::MAX_BATCH_SIZE)
 
       count operation.to_sym
 
       job = SalesforceBulkApi::Job.new(
           operation: operation,
           sobject: sobject,
-          records: records,
-          external_field: external_field,
+          external_field: options[:external_field],
           connection: @connection
       )
 
-      job.create_job(batch_size, options)
+      job.create_job(options)
       @listeners[:job_created].each { |callback| callback.call(job) }
-      operation == 'query' ? job.add_query : job.add_batches
+      operation == 'query' ? job.add_query(workload) : job.add_batches(workload, batch_size)
       response = (close_job && !pk_chunking) ? job.close_job : {}
       response.merge!({
         'batches' => job.get_job_result(get_response, timeout)

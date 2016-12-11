@@ -6,14 +6,14 @@ describe SalesforceBulkApi do
 
   before :each do
     auth_hash = YAML.load_file('auth_credentials.yml')
-    sfdc_auth_hash = auth_hash['salesforce']
+    sf_auth_hash = auth_hash['salesforce']
 
     @sf_client = Restforce.new(
-      username: sfdc_auth_hash['user'],
-      password: sfdc_auth_hash['passwordandtoken'],
-      client_id: sfdc_auth_hash['client_id'],
-      client_secret: sfdc_auth_hash['client_secret'],
-      host: sfdc_auth_hash['host'])
+      username: sf_auth_hash['user'],
+      password: sf_auth_hash['passwordandtoken'],
+      client_id: sf_auth_hash['client_id'],
+      client_secret: sf_auth_hash['client_secret'],
+      host: sf_auth_hash['host'])
     @sf_client.authenticate!
 
     @account_id = auth_hash['salesforce']['test_account_id']
@@ -21,38 +21,44 @@ describe SalesforceBulkApi do
     @api = SalesforceBulkApi::Api.new(@sf_client)
   end
 
-  after :each do
-
-  end
-
   describe 'upsert' do
 
     context 'when not passed get_result' do
       it "doesn't return the batches array" do
-        res = @api.upsert('Account', [{:Id => @account_id, :Website => 'www.test.com'}], 'Id')
+        options = {
+          external_field: 'Id'
+        }
+        res = @api.upsert('Account', [{:Id => @account_id, :Website => 'www.test.com'}], options)
         res['batches'].should be_nil
       end
     end
 
-    context 'when passed get_result = true' do
+    context 'when passed get_response = true' do
       it 'returns the batches array' do
-        res = @api.upsert('Account', [{:Id => @account_id, :Website => 'www.test.com'}], 'Id', true)
+        options = {
+          external_field: 'Id',
+          get_response: true
+        }
+        res = @api.upsert('Account', [{:Id => @account_id, :Website => 'www.test.com'}], options)
         res['batches'][0]['response'].is_a? Array
 
         res['batches'][0]['response'][0]['id'].should start_with(@account_id)
         res['batches'][0]['response'][0]['success'].should eq 'true'
         res['batches'][0]['response'][0]['created'].should eq 'false'
-
       end
     end
 
     context 'when passed empty strings' do
       it 'sets the empty attributes' do
-        @api.update('Account', [{:Id => @account_id, :Website => 'abc123', :Phone => '5678'}], true)
+        options = {
+          external_field: 'Id',
+          get_response: true
+        }
+        @api.update('Account', [{:Id => @account_id, :Website => 'abc123', :Phone => '5678'}], options)
         res = @api.query('Account', "SELECT Website, Phone From Account WHERE Id = '#{@account_id}'")
         res['batches'][0]['response'][0]['Website'].should eq 'abc123'
         res['batches'][0]['response'][0]['Phone'].should eq '5678'
-        res = @api.upsert('Account', [{:Id => @account_id, :Website => ' ', :Phone => ' '}], 'Id', true)
+        res = @api.upsert('Account', [{:Id => @account_id, :Website => ' ', :Phone => ' '}], options)
         res['batches'][0]['response'][0]['id'].should start_with(@account_id)
         res['batches'][0]['response'][0]['success'].should eq 'true'
         res['batches'][0]['response'][0]['created'].should eq 'false'
@@ -75,7 +81,7 @@ describe SalesforceBulkApi do
 
       context 'when passed get_result = true' do
         it 'returns the batches array' do
-          res = @api.update('Account', [{:Id => @account_id, :Website => 'www.test.com'}], true)
+          res = @api.update('Account', [{:Id => @account_id, :Website => 'www.test.com'}], get_response: true)
           res['batches'][0]['response'].is_a? Array
           res['batches'][0]['response'][0]['id'].should start_with(@account_id)
           res['batches'][0]['response'][0]['success'].should eq 'true'
@@ -86,8 +92,11 @@ describe SalesforceBulkApi do
 
     context 'when there is an error' do
       context 'when not passed get_result' do
-        it "doesn't return the results array" do
-          res = @api.update('Account', [{:Id => @account_id, :Website => 'www.test.com'},{:Id => 'abc123', :Website => 'www.test.com'}])
+        it 'does not return the results array' do
+          res = @api.update('Account', [
+            {:Id => @account_id, :Website => 'www.test.com'},
+            {:Id => 'abc123', :Website => 'www.test.com'}
+          ])
           res['batches'].should be_nil
         end
       end
@@ -101,7 +110,10 @@ describe SalesforceBulkApi do
               {:Id => @account_id, :Website => 'www.test.com'},
               {:Id => @account_id, :Website => 'www.test.com'},
               {:Id => 'abc123', :Website => 'www.test.com'}
-            ], true, 2)
+            ],
+            get_response: true,
+            batch_size: 2
+          )
 
           res['batches'][0]['response'][0]['id'].should start_with(@account_id)
           res['batches'][0]['response'][0]['success'].should eq 'true'
@@ -174,7 +186,7 @@ describe SalesforceBulkApi do
       it 'increments operation count and http POST count' do
         @api.counters[:http_post].should eq 0
         @api.counters[:update].should eq 0
-        @api.update('Account', [{:Id => @account_id, :Website => 'abc123', :Phone => '5678'}], false)
+        @api.update('Account', [{:Id => @account_id, :Website => 'abc123', :Phone => '5678'}], get_response: false)
         @api.counters[:http_post].should eq 3
         @api.counters[:update].should eq 1
       end
