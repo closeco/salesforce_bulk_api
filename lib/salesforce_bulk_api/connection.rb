@@ -2,6 +2,7 @@ module SalesforceBulkApi
   require 'timeout'
 
   class Connection
+    require 'restforce'
     include Concerns::Throttling
 
     attr_reader :instance_host, :path_prefix, :session_id
@@ -17,9 +18,7 @@ module SalesforceBulkApi
     end
 
     def login
-      client_type = @client.class.to_s
-      case client_type
-      when 'Restforce::Data::Client'
+      if @client.is_a?(Restforce::Data::Client)
         @session_id = @client.options[:oauth_token]
         @server_url = @client.options[:instance_url]
       else
