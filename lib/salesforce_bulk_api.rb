@@ -64,8 +64,10 @@ module SalesforceBulkApi
       @listeners[:job_created] << block
     end
 
-    def job_from_id(job_id)
-      SalesforceBulkApi::Job.new(job_id: job_id, connection: @connection)
+    def job_from_id(job_id, options = {})
+      options[:job_id] = job_id
+      options[:connection] = @connection
+      SalesforceBulkApi::Job.new(options)
     end
 
     def do_operation(operation, sobject, workload, options = {})
