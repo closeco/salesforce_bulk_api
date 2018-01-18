@@ -15,6 +15,7 @@ module SalesforceBulkApi
       @external_field = args[:external_field]
       @connection     = args[:connection]
       @batch_ids      = []
+      @nullable_fields = args[:nullable_fields] || []
     end
 
     def create_job(options = {})
@@ -228,7 +229,7 @@ module SalesforceBulkApi
       result = []
       keys.each do |k|
         value = r[k]
-        if value.to_s.empty?
+        if value.to_s.empty? && !@nullable_fields.include?(k.to_s)
           raise SalesforceBulkApi::ProcessingException.new(
             "Value is empty or not specified #{k}, #{r.to_s}, use space instead",
           )
@@ -238,7 +239,7 @@ module SalesforceBulkApi
           if value.respond_to?(:iso8601) # timestamps
             result << value.iso8601.to_s
           else
-            result << value.to_s
+            result << (value.nil? ? '#N/A' : value.to_s)
           end
         end
       end

@@ -81,7 +81,8 @@ module SalesforceBulkApi
           operation: operation,
           sobject: sobject,
           external_field: options[:external_field],
-          connection: @connection
+          connection: @connection,
+          nullable_fields: options[:nullable_fields]
       )
 
       job.create_job(options)

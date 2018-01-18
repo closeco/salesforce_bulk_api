@@ -52,19 +52,22 @@ describe SalesforceBulkApi do
       it 'sets the empty attributes' do
         options = {
           external_field: 'Id',
-          get_response: true
+          get_response: true,
+          nullable_fields: ['NumberOfEmployees']
         }
-        @api.update('Account', [{:Id => @account_id, :Website => 'abc123', :Phone => '5678'}], options)
-        res = @api.query('Account', "SELECT Website, Phone From Account WHERE Id = '#{@account_id}'")
+        @api.update('Account', [{:Id => @account_id, :Website => 'abc123', :Phone => '5678', :NumberOfEmployees => 10}], options)
+        res = @api.query('Account', "SELECT Website, Phone, NumberOfEmployees From Account WHERE Id = '#{@account_id}'")
         res['batches'][0]['response'][0]['Website'].should eq 'abc123'
         res['batches'][0]['response'][0]['Phone'].should eq '5678'
-        res = @api.upsert('Account', [{:Id => @account_id, :Website => ' ', :Phone => ' '}], options)
+        res['batches'][0]['response'][0]['NumberOfEmployees'].should eq '10'
+        res = @api.upsert('Account', [{:Id => @account_id, :Website => ' ', :Phone => ' ', :NumberOfEmployees => nil}], options)
         res['batches'][0]['response'][0]['id'].should start_with(@account_id)
         res['batches'][0]['response'][0]['success'].should eq 'true'
         res['batches'][0]['response'][0]['created'].should eq 'false'
-        res = @api.query('Account', "SELECT Website, Phone From Account WHERE Id = '#{@account_id}'")
+        res = @api.query('Account', "SELECT Website, Phone, NumberOfEmployees From Account WHERE Id = '#{@account_id}'")
         res['batches'][0]['response'][0]['Website'].should eq('')
         res['batches'][0]['response'][0]['Phone'].should eq('')
+        res['batches'][0]['response'][0]['NumberOfEmployees'].should eq('')
       end
     end
 

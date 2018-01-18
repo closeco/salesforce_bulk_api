@@ -15,12 +15,12 @@ Gem::Specification.new do |s|
   s.rubyforge_project = 'salesforce_bulk_api'
 
   s.add_dependency('json', ['>= 0'])
-  s.add_dependency('http', ['>= 2.0.3'])
+  s.add_dependency('http', ['>= 2.2.1'])
   s.add_dependency('xml-simple', ['>= 0'])
 
   s.add_development_dependency 'rspec'
   s.add_development_dependency 'restforce', '~> 2.1.0'
-  s.add_development_dependency 'rake', '~> 11.1.0'
+  s.add_development_dependency 'rake', '~> 11.3.0'
   s.add_development_dependency 'pry'
 
   s.files         = `git ls-files`.split("\n")
