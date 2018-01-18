@@ -231,7 +231,7 @@ module SalesforceBulkApi
         value = r[k]
         if value.to_s.empty? && !@nullable_fields.include?(k.to_s)
           raise SalesforceBulkApi::ProcessingException.new(
-            "Value is empty or not specified #{k}, #{r.to_s}, use space instead",
+            "Value is empty or not specified #{k}, #{r.to_s}, use space instead, nullable field: #{@nullable_fields}",
           )
         elsif value.is_a?(Hash)
           raise SalesforceBulkApi::ProcessingException.new("Unsupported field type, #{k}, #{r.to_s}")
